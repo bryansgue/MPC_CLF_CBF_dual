@@ -9,6 +9,7 @@ from casadi import solve
 from casadi import inv
 from casadi import mtimes
 from casadi import norm_2
+from casadi import jacobian
 from std_msgs.msg import Float64MultiArray
 from acados_template import AcadosModel
 import numpy as np
@@ -266,8 +267,12 @@ def f_system_simple_model_quat():
     f_expl = MX.zeros(11, 1)
     f_expl = A @ x + B @ u 
 
-    f_x = A @ x 
-    g_x = B
+    #f_x = A @ x 
+    #g_x = B
+
+    # Define f_x and g_x
+    f_x = Function('f_x', [x], [f_expl])
+    g_x = Function('g_x', [x, u], [jacobian(f_expl, u)])
 
     f_system = Function('system',[x, u], [f_expl])
      # Acados Model

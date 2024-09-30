@@ -107,10 +107,35 @@ def create_ocp_solver_description(x0, N_horizon, t_horizon, zp_max, zp_min, phi_
     obs_y= ocp.p[16,0]
     obs_r = 0.4
     rob_r = 0.4
-    B = -sqrt((model.x[0] - obs_x)**2 + (model.x[1] - obs_y)**2) + (rob_r + obs_r)  
-    delta_B =  jacobian(B, model.x) 
-   
-    B_p = delta_B@f_x + delta_B@g_x@u
+    h = sqrt((model.x[0] - obs_x)**2 + (model.x[1] - obs_y)**2) - (rob_r + obs_r)  
+    
+    f_x_val = f_x(model.x)
+    g_x_val = g_x(model.x,model.u)
+
+
+    # Derivada de Lie de primer orden
+    Lf_h = jacobian(h, model.x) @ f_x_val 
+    Lg_h = jacobian(h, model.x) @ g_x_val
+
+    # Derivada de Lie de segundo orden
+    Lf2_h = jacobian(Lf_h, model.x) @ f_x_val
+    Lg_L_f_h = jacobian(Lf_h, model.x) @ g_x_val 
+
+    # Derivada de Lie de tercer orden
+    Lf3_h = jacobian(Lf2_h, model.x) @ f_x_val 
+    Lg_L_f2_h = jacobian(Lf2_h, model.x) @ g_x_val  
+
+    # Barreras temporales
+    h_p = Lf_h + Lg_h @ model.u
+    h_pp = Lf2_h + Lg_L_f_h @ model.u
+    h_ppp = Lf3_h + Lg_L_f2_h @ model.u
+
+    nb_1 = h
+    nb_2 = vertcat(h, Lf_h) 
+    nb_3 = vertcat(h, Lf_h, Lf2_h) 
+
+    K_alpha = MX([10, 10]).T 
+    K_beta = MX([10, 10, 10]).T 
 
     # set constraints
     ocp.constraints.constr_type = 'BGH'
@@ -119,25 +144,25 @@ def create_ocp_solver_description(x0, N_horizon, t_horizon, zp_max, zp_min, phi_
     ocp.constraints.ubu = np.array([8, 8, 8])
     ocp.constraints.idxbu = np.array([0, 1, 2])
 
-    constraints = vertcat(B_p + 1*B)
+    constraints = vertcat(h_p + 5*h, h_pp +  K_alpha @ nb_2)
     #constraints = vertcat(B_p + 1*B)
     #constraints = vertcat(model.x[1])
     
     ocp.model.con_h_expr = constraints
-    Dim_constraints = 1
+    Dim_constraints = 2
     #ocp.model.con_h_expr_e =  ocp.model.con_h_expr
 
 
     # We put all constraint cost weights to 0 and only set them at runtime
     cost_weights = np.ones(Dim_constraints)
     ocp.cost.zl = cost_weights
-    ocp.cost.Zl = 1e9 *cost_weights
-    ocp.cost.Zu = 1e9* cost_weights
+    ocp.cost.Zl = 100*cost_weights
+    ocp.cost.Zu = 100* cost_weights
     ocp.cost.zu = cost_weights
 
-    ocp.constraints.lh =-1e9* np.ones(Dim_constraints)  #min
+    ocp.constraints.lh = np.array([0,0])  #min
     #ocp.constraints.lh_e = -1e9* np.ones(Dim_constraints)
-    ocp.constraints.uh = 0.0*np.ones(Dim_constraints) #max
+    ocp.constraints.uh = np.array([1e9,1e9])#max
     #ocp.constraints.uh_e = np.zeros(Dim_constraints)
     ocp.constraints.idxsh = np.arange(Dim_constraints)
 
@@ -186,7 +211,7 @@ def main(vel_pub, vel_msg, odom_sim_pub_2, odom_sim_msg_2):
     x[:, 0] = [1,1,5,1,0,0,0.5,0,0,0,0]
 
     #TAREA DESEADA
-    value = 9
+    value = 15
     xd = lambda t: 4 * np.sin(-value*0.04*t) + 3
     yd = lambda t: 4 * np.sin(-value*0.08*t)
     zd = lambda t: 2 * np.sin(-value*0.08*t) + 6
